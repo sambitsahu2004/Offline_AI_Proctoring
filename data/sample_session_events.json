@@ -1,0 +1,41 @@
+{
+  "session_id": "exam_session_demo_999",
+  "candidate_name": "John Doe",
+  "exam_name": "Computer Science 101 Final",
+  "date": "2026-08-11",
+  "duration_minutes": 90,
+  "events": [
+    {
+      "session_id": "exam_session_demo_999",
+      "timestamp": "2026-08-11T10:05:12Z",
+      "event_type": "gaze_deviation",
+      "confidence": 0.89,
+      "duration_ms": 4500,
+      "frame_ref": "frames/gaze_1.jpg"
+    },
+    {
+      "session_id": "exam_session_demo_999",
+      "timestamp": "2026-08-11T10:15:30Z",
+      "event_type": "no_face",
+      "confidence": 0.95,
+      "duration_ms": 2500,
+      "frame_ref": "frames/noface_1.jpg"
+    },
+    {
+      "session_id": "exam_session_demo_999",
+      "timestamp": "2026-08-11T10:35:45Z",
+      "event_type": "phone_detected",
+      "confidence": 0.92,
+      "duration_ms": 3800,
+      "frame_ref": "frames/phone_1.jpg"
+    },
+    {
+      "session_id": "exam_session_demo_999",
+      "timestamp": "2026-08-11T10:35:50Z",
+      "event_type": "gaze_deviation",
+      "confidence": 0.88,
+      "duration_ms": 11200,
+      "frame_ref": "frames/gaze_2.jpg"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+# Additional dependencies for extractor_agent.py — install alongside the
+# existing requirements.txt (chromadb, ollama, pandas).
+#
+# mediapipe and onnxruntime are NO LONGER NEEDED: extraction now uses a
+# local Ollama multimodal vision model (llava:7b) instead of MediaPipe
+# Face Landmarker + YOLOv8-ONNX. `ollama` itself is already pulled in by
+# the main requirements.txt.
+
+opencv-python>=4.9.0
+streamlit>=1.35.0
+Pillow>=10.0.0
