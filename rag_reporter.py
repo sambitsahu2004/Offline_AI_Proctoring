@@ -182,7 +182,10 @@ def generate_report(session_data, context, model_name="llama3.2:latest"):
 
     print(f"Calling Ollama model '{model_name}' to generate report...")
 
-    # Format events list to convert ms to seconds and make it clean for the LLM
+    # Format events list to convert ms to seconds and make it clean for the LLM.
+    # Frame image data (frame_jpeg_b64) is deliberately excluded — it's
+    # operational data for the frames table, not something the report
+    # writer needs, and would bloat the prompt with a base64 blob per event.
     formatted_events = []
     for event in events:
         formatted_event = {
@@ -190,7 +193,6 @@ def generate_report(session_data, context, model_name="llama3.2:latest"):
             "event_type": event.get("event_type"),
             "duration_seconds": round(event.get("duration_ms", 0) / 1000.0, 2),
             "confidence_percent": round(event.get("confidence", 0.0) * 100, 1),
-            "frame_ref": event.get("frame_ref")
         }
         formatted_events.append(formatted_event)
 

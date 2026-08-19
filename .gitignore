@@ -41,3 +41,5 @@ Thumbs.db
 
 # Generated reports / temporary output
 *.tmp
+
+data/frames/*.jpg

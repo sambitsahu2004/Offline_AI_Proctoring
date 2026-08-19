@@ -15,6 +15,7 @@ RUN:
 
 import os
 import json
+import base64
 import tempfile
 import streamlit as st
 
@@ -83,7 +84,16 @@ with tab_new:
         with open(tmp_path, "wb") as f:
             f.write(uploaded.read())
 
-        st.video(tmp_path) if is_video else st.image(tmp_path)
+        # NOTE: this must be a real if/else statement, not a bare ternary
+        # expression. Streamlit's "magic" mode auto-writes any standalone
+        # expression statement that isn't a direct st.xxx(...) call — a
+        # ternary's return value (the DeltaGenerator from st.video/st.image)
+        # qualifies, and got silently dumped to the page as its own
+        # docstring + full API method table.
+        if is_video:
+            st.video(tmp_path)
+        else:
+            st.image(tmp_path)
 
         if st.button("Run analysis", type="primary"):
             with st.spinner("Analyzing (this can take a while — each frame is a vision-model call)..."):
@@ -109,7 +119,27 @@ with tab_new:
                 db.save_report(session_id, report_md, model_used=model_used)
 
             st.subheader("Extracted event log")
-            st.json(session_data)
+            # Frame images now travel as base64 JPEG inside each event
+            # (frame_jpeg_b64) instead of a file path — show them as actual
+            # images here, and keep the raw JSON view free of giant base64
+            # text dumps. The full data (images included) is still in the
+            # downloadable .json below, for anyone who wants the complete
+            # self-contained export.
+            events_for_display = []
+            for ev in session_data.get("events", []):
+                ev_display = {k: v for k, v in ev.items() if k != "frame_jpeg_b64"}
+                ev_display["has_frame_image"] = bool(ev.get("frame_jpeg_b64"))
+                events_for_display.append(ev_display)
+            st.json({**{k: v for k, v in session_data.items() if k != "events"}, "events": events_for_display})
+
+            frames_present = [ev for ev in session_data.get("events", []) if ev.get("frame_jpeg_b64")]
+            if frames_present:
+                st.caption(f"{len(frames_present)} flagged frame(s) — stored in the database, not as files:")
+                frame_cols = st.columns(min(len(frames_present), 4))
+                for i, ev in enumerate(frames_present):
+                    image_bytes = base64.b64decode(ev["frame_jpeg_b64"])
+                    with frame_cols[i % len(frame_cols)]:
+                        st.image(image_bytes, caption=f"{ev['event_type']} @ {ev['timestamp']}")
 
             st.subheader("Generated report")
             st.markdown(report_md)
@@ -146,7 +176,15 @@ with tab_past:
         stored_report = db.get_latest_report(chosen_id)
 
         st.subheader("Stored event log")
-        st.json(stored_session)
+        st.json(stored_session)  # events here only carry a small frame_id int, safe to dump directly
+
+        stored_frames = db.get_frames_for_session(chosen_id)
+        if stored_frames:
+            st.caption(f"{len(stored_frames)} flagged frame(s) for this session:")
+            frame_cols = st.columns(min(len(stored_frames), 4))
+            for i, fr in enumerate(stored_frames):
+                with frame_cols[i % len(frame_cols)]:
+                    st.image(fr["image_bytes"], caption=f"{fr['event_type']} @ {fr['timestamp']}")
 
         if stored_report:
             st.subheader(f"Stored report (model: {stored_report['model_used']}, generated {stored_report['generated_at']})")

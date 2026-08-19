@@ -1,0 +1,24 @@
+# Dependencies for the CrewAI pipeline (crew_pipeline.py, crew_tools.py,
+# looping_core.py) — install these in a SEPARATE virtual environment from
+# the one running streamlit_app.py / requirements.txt.
+#
+# WHY SEPARATE: installing crewai alongside this project's existing
+# requirements.txt (chromadb, streamlit) produced real pip dependency
+# conflicts, confirmed during testing:
+#   streamlit 1.61.1 requires pyarrow<25,  crewai's chain pulls in pyarrow 25.0.1
+#   streamlit 1.61.1 requires starlette<1.4.0, crewai's chain pulls in 1.6.0
+#   streamlit 1.61.1 requires websockets<17, crewai's chain pulls in 17.0.1
+# Nothing crashed on import when tested, but pip's resolver could silently
+# pick different versions on your machine depending on install order —
+# don't risk it in the same venv as your Streamlit demo.
+#
+# Setup:
+#   python -m venv .venv-crew
+#   .venv-crew\Scripts\activate
+#   pip install -r requirements-crewai.txt
+
+crewai>=1.15.0
+opencv-python>=4.9.0
+Pillow>=10.0.0
+chromadb>=0.4.24
+ollama>=0.2.1
