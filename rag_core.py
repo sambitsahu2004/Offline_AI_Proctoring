@@ -64,8 +64,18 @@ def seed_knowledge_base(collection):
         metadatas = []
         ids = []
         for i, chunk in enumerate(chunks):
+            # Tag this chunk with whichever backtick-wrapped event_type
+            # token(s) appear in its header line (e.g. "## Gaze Deviation
+            # (`gaze_deviation`)" -> "gaze_deviation"). Used by the CrewAI
+            # retrieval loop (looping_core.retrieve_with_coverage_loop) to
+            # check whether a session's event types are actually covered
+            # by what got retrieved, instead of trusting embedding
+            # similarity alone. Purely additive metadata — chunk content
+            # and existing retrieve_policy_context() behavior are unchanged.
+            header_line = chunk.splitlines()[0] if chunk else ""
+            event_type_tags = ",".join(re.findall(r"`([a-z_]+)`", header_line))
             documents.append(chunk)
-            metadatas.append({"source": filename, "chunk_index": i})
+            metadatas.append({"source": filename, "chunk_index": i, "event_types": event_type_tags})
             ids.append(f"doc_{filename.replace('.', '_')}_{doc_id}")
             doc_id += 1
         if documents:
@@ -94,6 +104,21 @@ def compile_retrieval_query(session_data):
     if critical_events:
         query += f" Critical events: {', '.join(critical_events)}."
     return query
+
+
+def retrieve_policy_chunks(collection, query_text, k=4):
+    """Like retrieve_policy_context(), but returns [(chunk_text, metadata), ...]
+    instead of one joined string — the CrewAI retrieval loop
+    (looping_core.retrieve_with_coverage_loop) needs each chunk's
+    event_types metadata to check coverage. Direct (non-CrewAI) pipeline
+    code should keep using retrieve_policy_context(); this is additive."""
+    results = collection.query(query_texts=[query_text], n_results=k)
+    pairs = []
+    if results and "documents" in results and results["documents"]:
+        docs = results["documents"][0]
+        metas = (results.get("metadatas") or [[]])[0] or [{} for _ in docs]
+        pairs = list(zip(docs, metas))
+    return pairs
 
 
 def retrieve_policy_context(collection, query_text, k=4):
@@ -151,7 +176,11 @@ def generate_report(session_data, context, model_name="llama3.2:latest"):
         print("No events in session data — generating template report (no LLM call).")
         return _build_no_incident_report(session_data)
 
-    # Prepare events for LLM (convert ms → seconds, percentages)
+    # Prepare events for LLM (convert ms → seconds, percentages). Frame
+    # image data (frame_jpeg_b64) is deliberately NOT included here — it's
+    # operational data for the frames table, not something the report
+    # writer needs to reason about, and including a base64 blob per event
+    # would bloat/pollute the prompt for no benefit.
     formatted_events = []
     for ev in events:
         formatted_events.append({
@@ -159,7 +188,6 @@ def generate_report(session_data, context, model_name="llama3.2:latest"):
             "event_type": ev.get("event_type"),
             "duration_seconds": round(ev.get("duration_ms", 0) / 1000.0, 2),
             "confidence_percent": round(ev.get("confidence", 0.0) * 100, 1),
-            "frame_ref": ev.get("frame_ref"),
         })
     events_json = json.dumps(formatted_events, indent=2)
 

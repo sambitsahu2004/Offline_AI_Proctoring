@@ -58,6 +58,7 @@ import os
 import re
 import cv2
 import json
+import base64
 import logging
 import argparse
 import ollama
@@ -69,7 +70,6 @@ from PIL import Image, ExifTags
 # --------------------------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
-FRAMES_DIR = os.path.join(DATA_DIR, "frames")
 LOGS_DIR = os.path.join(BASE_DIR, "logs")
 
 # --------------------------------------------------------------------------
@@ -357,22 +357,29 @@ def _extract_video_start_datetime(video_path):
         return datetime.now()
 
 
-def _save_frame(frame_bgr, tag, counter):
-    os.makedirs(FRAMES_DIR, exist_ok=True)
-    fname = f"{tag}_{counter}.jpg"
-    fpath = os.path.join(FRAMES_DIR, fname)
-    cv2.imwrite(fpath, frame_bgr)
-    return os.path.relpath(fpath, BASE_DIR).replace(os.sep, "/")
+def _encode_frame(frame_bgr):
+    """Encodes a frame straight to base64 JPEG bytes — no disk write at
+    all. Frames are persisted by db.save_session_events() (as a BLOB in
+    the `frames` table, joined to candidate info via session_id), not as
+    loose .jpg files. The base64 string travels inside the event dict so
+    the JSON event log stays self-contained and easy to hand off, but
+    display code (streamlit_app.py) should decode + show it as an image,
+    never dump it raw as JSON text."""
+    ok, buf = cv2.imencode(".jpg", frame_bgr)
+    if not ok:
+        logger.error("Could not JPEG-encode frame.")
+        return None
+    return base64.b64encode(buf.tobytes()).decode("ascii")
 
 
-def _make_event(session_id, timestamp_iso, event_type, confidence, duration_ms, frame_ref):
+def _make_event(session_id, timestamp_iso, event_type, confidence, duration_ms, frame_jpeg_b64):
     return {
         "session_id": session_id,
         "timestamp": timestamp_iso,
         "event_type": event_type,
         "confidence": round(float(confidence), 3),
         "duration_ms": int(duration_ms),
-        "frame_ref": frame_ref,
+        "frame_jpeg_b64": frame_jpeg_b64,
     }
 
 
@@ -408,9 +415,9 @@ def extract_from_image(image_path, session_id, candidate_name, exam_name,
 
     timestamp_iso = capture_dt.strftime("%Y-%m-%dT%H:%M:%S")
     events = []
-    for i, (etype, conf) in enumerate(active_events.items()):
-        frame_ref = _save_frame(frame, etype, i)
-        events.append(_make_event(session_id, timestamp_iso, etype, conf, 0, frame_ref))
+    for etype, conf in active_events.items():
+        frame_b64 = _encode_frame(frame)
+        events.append(_make_event(session_id, timestamp_iso, etype, conf, 0, frame_b64))
 
     return {
         "session_id": session_id,
@@ -450,22 +457,19 @@ def extract_from_video(video_path, session_id, candidate_name, exam_name,
     active_events = {}
     finished_events = []
     frame_counter = 0
-    save_counter = 0
 
     def close_event(etype, end_sec):
-        nonlocal save_counter
         info = active_events.pop(etype)
         duration_sec = end_sec - info["start_sec"]
         if duration_sec < MIN_EVENT_DURATION_SEC.get(etype, 1.0):
             logger.debug(f"{video_path}: {etype} lasted {duration_sec:.2f}s — below debounce threshold, dropped.")
             return  # debounce: too brief to count
         avg_conf = sum(info["confidences"]) / len(info["confidences"])
-        frame_ref = _save_frame(info["frame"], etype, save_counter)
-        save_counter += 1
+        frame_b64 = _encode_frame(info["frame"])
         event_dt = video_start_dt + timedelta(seconds=info["start_sec"])
         timestamp_iso = event_dt.strftime("%Y-%m-%dT%H:%M:%S")
         finished_events.append(
-            _make_event(session_id, timestamp_iso, etype, avg_conf, duration_sec * 1000, frame_ref)
+            _make_event(session_id, timestamp_iso, etype, avg_conf, duration_sec * 1000, frame_b64)
         )
 
     while True:
