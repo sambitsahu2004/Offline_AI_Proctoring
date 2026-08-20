@@ -1,3 +1,4 @@
 chromadb>=0.4.24
 ollama>=0.2.1
 pandas>=2.0.0
+reportlab>=4.0.0
